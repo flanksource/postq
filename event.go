@@ -15,9 +15,13 @@ type Event struct {
 	ID          uuid.UUID         `json:"id"`
 	Name        string            `json:"name"`
 	Properties  map[string]string `json:"properties"`
-	Error       string            `json:"error"`
+	Error       *string           `json:"error"`
 	Attempts    int               `json:"attempts"`
 	LastAttempt *time.Time        `json:"last_attempt"`
+}
+
+func (t *Event) SetError(err string) {
+	t.Error = &err
 }
 
 // Scan scans pgx rows into Event
@@ -119,12 +123,12 @@ func fetchEvents(ctx Context, tx pgx.Tx, watchEvents []string, batchSize int, op
 		WHERE id IN (
 			SELECT id FROM event_queue
 			WHERE 
-				attempts <= :maxAttempts AND
-				name IN :events AND
-				(last_attempt IS NULL OR last_attempt <= NOW() - INTERVAL '1 SECOND' * :baseDelay * POWER(attempts, :exponent))
+				attempts <= @maxAttempts AND
+				name = ANY(@events) AND
+				(last_attempt IS NULL OR last_attempt <= NOW() - INTERVAL '1 SECOND' * @baseDelay * POWER(attempts, @exponent))
 			ORDER BY priority DESC, created_at ASC
 			FOR UPDATE SKIP LOCKED
-			LIMIT :batchSize
+			LIMIT @batchSize
 		)
 		RETURNING id, name, properties, error, last_attempt, attempts
 	`

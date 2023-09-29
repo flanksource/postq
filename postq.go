@@ -32,7 +32,7 @@ func (t *SyncEventConsumer) Handle(ctx Context) (int, error) {
 	if err != nil {
 		if event != nil {
 			event.Attempts++
-			event.Error = err.Error()
+			event.SetError(err.Error())
 			if err := event.Save(ctx, tx.Conn()); err != nil {
 				return 0, fmt.Errorf("error saving updates of a failed event: %w", err)
 			}
