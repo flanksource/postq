@@ -1,7 +1,6 @@
 package postq
 
 import (
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -12,13 +11,14 @@ import (
 // Event represents the event queue table.
 // The table must have the following fields.
 type Event struct {
-	ID          uuid.UUID         `json:"id"`
-	Name        string            `json:"name"`
-	Properties  map[string]string `json:"properties"`
-	Error       *string           `json:"error"`
-	Attempts    int               `json:"attempts"`
-	LastAttempt *time.Time        `json:"last_attempt"`
-	CreatedAt   time.Time         `json:"created_at"`
+	ID          uuid.UUID  `json:"id"`
+	Name        string     `json:"name"`
+	Error       *string    `json:"error"`
+	Attempts    int        `json:"attempts"`
+	LastAttempt *time.Time `json:"last_attempt"`
+
+	Properties map[string]string `json:"properties"`
+	CreatedAt  time.Time         `json:"created_at"`
 }
 
 func (t *Event) SetError(err string) {
@@ -27,11 +27,9 @@ func (t *Event) SetError(err string) {
 
 // Scan scans pgx rows into Event
 func (t *Event) Scan(rows pgx.Row) error {
-	var propertiesJSON []byte
 	err := rows.Scan(
 		&t.ID,
 		&t.Name,
-		&propertiesJSON,
 		&t.Error,
 		&t.LastAttempt,
 		&t.Attempts,
@@ -40,33 +38,7 @@ func (t *Event) Scan(rows pgx.Row) error {
 		return err
 	}
 
-	if propertiesJSON != nil {
-		err = json.Unmarshal(propertiesJSON, &t.Properties)
-		if err != nil {
-			return err
-		}
-	}
-
 	return nil
-}
-
-// Save saves the event or updates it if it exists.
-func (t *Event) Save(ctx Context, conn *pgx.Conn) error {
-	propertiesJSON, err := json.Marshal(t.Properties)
-	if err != nil {
-		return err
-	}
-
-	var query string
-	if t.ID == uuid.Nil {
-		query = `INSERT INTO event_queue (name, properties, error, attempts) VALUES ($1, $2, $3, $4) RETURNING id, created_at;`
-		err = conn.QueryRow(ctx, query, t.Name, propertiesJSON, t.Error, t.Attempts).Scan(&t.ID, &t.CreatedAt)
-	} else {
-		query = `UPDATE event_queue SET name=$1, properties=$2, error=$3, attempts=$4, last_attempt=NOW() WHERE id=$5 RETURNING id;`
-		_, err = conn.Exec(ctx, query, t.Name, propertiesJSON, t.Error, t.Attempts, t.ID)
-	}
-
-	return err
 }
 
 type Events []Event
@@ -79,13 +51,8 @@ func (events Events) Update(ctx Context, tx *pgx.Conn) error {
 
 	var batch pgx.Batch
 	for _, event := range events {
-		propertiesJSON, err := json.Marshal(event.Properties)
-		if err != nil {
-			return err
-		}
-
-		query := `UPDATE event_queue SET name=$1, properties=$2, error=$3, attempts=$4, last_attempt=NOW() WHERE id=$5 RETURNING created_at;`
-		batch.Queue(query, event.Name, propertiesJSON, event.Error, event.Attempts, event.ID)
+		query := `UPDATE event_queue SET error=$1, attempts=$2, last_attempt=NOW() WHERE id=$3`
+		batch.Queue(query, event.Error, event.Attempts, event.ID)
 	}
 
 	br := tx.SendBatch(ctx, &batch)
@@ -131,7 +98,7 @@ func fetchEvents(ctx Context, tx pgx.Tx, watchEvents []string, batchSize int, op
 			FOR UPDATE SKIP LOCKED
 			LIMIT @batchSize
 		)
-		RETURNING id, name, properties, error, last_attempt, attempts
+		RETURNING id, name, error, last_attempt, attempts
 	`
 
 	args := pgx.NamedArgs{

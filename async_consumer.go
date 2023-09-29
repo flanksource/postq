@@ -46,7 +46,7 @@ func (t *AsyncEventConsumer) Handle(ctx Context) (int, error) {
 
 	if err := failedEvents.Update(ctx, tx.Conn()); err != nil {
 		// TODO: More robust way to handle failed event insertion failures
-		log.Printf("error inserting into table 'event_queue': %v\n", err)
+		log.Printf("error saving event attempt updates to event_queue: %v\n", err)
 	}
 
 	return len(events), tx.Commit(ctx)

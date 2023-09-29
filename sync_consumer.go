@@ -2,8 +2,7 @@ package postq
 
 import (
 	"fmt"
-
-	"github.com/jackc/pgx/v5"
+	"log"
 )
 
 // SyncEventHandlerFunc processes a single event and ONLY makes db changes.
@@ -29,34 +28,36 @@ func (t SyncEventConsumer) EventConsumer() (*PGConsumer, error) {
 }
 
 func (t *SyncEventConsumer) Handle(ctx Context) (int, error) {
-	tx, err := ctx.Pool().Begin(ctx)
+	event, err := t.consumeEvent(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("error initiating db tx: %w", err)
-	}
-	defer tx.Rollback(ctx) //nolint:errcheck
-
-	event, err := t.consumeEvent(ctx, tx)
-	if err != nil {
-		if event != nil {
-			event.Attempts++
-			event.SetError(err.Error())
-			if err := event.Save(ctx, tx.Conn()); err != nil {
-				return 0, fmt.Errorf("error saving updates of a failed event: %w", err)
-			}
+		if event == nil {
+			return 0, err
 		}
 
-		err = fmt.Errorf("error processing sync consumers: %w", err)
+		event.Attempts++
+		event.SetError(err.Error())
+		const query = `UPDATE event_queue SET error=$1, attempts=$2, last_attempt=NOW() WHERE id=$3`
+		if _, err := ctx.Pool().Exec(ctx, query, event.Error, event.Attempts, event.ID); err != nil {
+			log.Printf("error saving event attempt updates to event_queue: %v\n", err)
+		}
 	}
 
-	if event == nil {
-		return 0, err
+	var eventCount int
+	if event != nil {
+		eventCount = 1
 	}
 
-	return 1, err
+	return eventCount, err
 }
 
 // consumeEvent fetches a single event and passes it to all the consumers in one single transaction.
-func (t *SyncEventConsumer) consumeEvent(ctx Context, tx pgx.Tx) (*Event, error) {
+func (t *SyncEventConsumer) consumeEvent(ctx Context) (*Event, error) {
+	tx, err := ctx.Pool().Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error initiating db tx: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
 	events, err := fetchEvents(ctx, tx, t.WatchEvents, 1, t.EventFetchOption)
 	if err != nil {
 		return nil, fmt.Errorf("error fetching events: %w", err)
