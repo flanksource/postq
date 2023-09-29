@@ -9,15 +9,15 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+// Event represents the event queue table.
+// The table must have the following fields.
 type Event struct {
-	ID          uuid.UUID         `gorm:"default:generate_ulid()"`
+	ID          uuid.UUID         `json:"id"`
 	Name        string            `json:"name"`
-	CreatedAt   time.Time         `json:"created_at"`
 	Properties  map[string]string `json:"properties"`
 	Error       string            `json:"error"`
 	Attempts    int               `json:"attempts"`
 	LastAttempt *time.Time        `json:"last_attempt"`
-	Priority    int               `json:"priority"`
 }
 
 // Scan scans pgx rows into Event
@@ -28,10 +28,8 @@ func (t *Event) Scan(rows pgx.Row) error {
 		&t.Name,
 		&propertiesJSON,
 		&t.Error,
-		&t.CreatedAt,
 		&t.LastAttempt,
 		&t.Attempts,
-		&t.Priority,
 	)
 	if err != nil {
 		return err
@@ -47,6 +45,7 @@ func (t *Event) Scan(rows pgx.Row) error {
 	return nil
 }
 
+// Save saves the event or updates it if it exists.
 func (t *Event) Save(ctx Context, conn *pgx.Conn) error {
 	propertiesJSON, err := json.Marshal(t.Properties)
 	if err != nil {
@@ -55,11 +54,11 @@ func (t *Event) Save(ctx Context, conn *pgx.Conn) error {
 
 	var query string
 	if t.ID == uuid.Nil {
-		query = `INSERT INTO event_queue (name, properties, error, attempts, last_attempt, priority) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, created_at;`
-		err = conn.QueryRow(ctx, query, t.Name, propertiesJSON, t.Error, t.Attempts, t.LastAttempt, t.Priority).Scan(&t.ID, &t.CreatedAt)
+		query = `INSERT INTO event_queue (name, properties, error, attempts, last_attempt) VALUES ($1, $2, $3, $4, $5) RETURNING id;`
+		err = conn.QueryRow(ctx, query, t.Name, propertiesJSON, t.Error, t.Attempts, t.LastAttempt).Scan(&t.ID)
 	} else {
-		query = `UPDATE event_queue SET name=$1, properties=$2, error=$3, attempts=$4, last_attempt=$5, priority=$6 WHERE id=$7 RETURNING created_at;`
-		err = conn.QueryRow(ctx, query, t.Name, propertiesJSON, t.Error, t.Attempts, t.LastAttempt, t.Priority, t.ID).Scan(&t.CreatedAt)
+		query = `UPDATE event_queue SET name=$1, properties=$2, error=$3, attempts=$4, last_attempt=$5 WHERE id=$6 RETURNING created_at;`
+		_, err = conn.Exec(ctx, query, t.Name, propertiesJSON, t.Error, t.Attempts, t.LastAttempt, t.ID)
 	}
 
 	return err
@@ -67,6 +66,7 @@ func (t *Event) Save(ctx Context, conn *pgx.Conn) error {
 
 type Events []Event
 
+// Update updates the events in batches.
 func (events Events) Update(ctx Context, tx *pgx.Conn) error {
 	if len(events) == 0 {
 		return nil
@@ -79,8 +79,8 @@ func (events Events) Update(ctx Context, tx *pgx.Conn) error {
 			return err
 		}
 
-		query := `UPDATE event_queue SET name=$1, properties=$2, error=$3, attempts=$4, last_attempt=$5, priority=$6 WHERE id=$7 RETURNING created_at;`
-		batch.Queue(query, event.Name, propertiesJSON, event.Error, event.Attempts, event.LastAttempt, event.Priority, event.ID)
+		query := `UPDATE event_queue SET name=$1, properties=$2, error=$3, attempts=$4, last_attempt=$5 WHERE id=$6 RETURNING created_at;`
+		batch.Queue(query, event.Name, propertiesJSON, event.Error, event.Attempts, event.LastAttempt, event.ID)
 	}
 
 	br := tx.SendBatch(ctx, &batch)
@@ -126,7 +126,7 @@ func fetchEvents(ctx Context, tx pgx.Tx, watchEvents []string, batchSize int, op
 			FOR UPDATE SKIP LOCKED
 			LIMIT :batchSize
 		)
-		RETURNING *
+		RETURNING id, name, properties, error, last_attempt, attempts
 	`
 
 	args := pgx.NamedArgs{
