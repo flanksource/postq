@@ -27,7 +27,7 @@ func (t *SyncEventConsumer) Handle(ctx Context) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("error initiating db tx: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer tx.Rollback(ctx) //nolint:errcheck
 
 	event, err := t.consumeOne(ctx, tx)
 	if err != nil {
@@ -90,7 +90,7 @@ func (t *AsyncEventConsumer) Handle(ctx Context) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("error initiating db tx: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer tx.Rollback(ctx) //nolint:errcheck
 
 	events, err := fetchEvents(ctx, tx, t.WatchEvents, t.BatchSize, t.EventFetcherOpt)
 	if err != nil {
