@@ -18,6 +18,7 @@ type Event struct {
 	Error       *string           `json:"error"`
 	Attempts    int               `json:"attempts"`
 	LastAttempt *time.Time        `json:"last_attempt"`
+	CreatedAt   time.Time         `json:"created_at"`
 }
 
 func (t *Event) SetError(err string) {
@@ -58,10 +59,10 @@ func (t *Event) Save(ctx Context, conn *pgx.Conn) error {
 
 	var query string
 	if t.ID == uuid.Nil {
-		query = `INSERT INTO event_queue (name, properties, error, attempts, last_attempt) VALUES ($1, $2, $3, $4, NOW()) RETURNING id;`
-		err = conn.QueryRow(ctx, query, t.Name, propertiesJSON, t.Error, t.Attempts).Scan(&t.ID)
+		query = `INSERT INTO event_queue (name, properties, error, attempts) VALUES ($1, $2, $3, $4) RETURNING id, created_at;`
+		err = conn.QueryRow(ctx, query, t.Name, propertiesJSON, t.Error, t.Attempts).Scan(&t.ID, &t.CreatedAt)
 	} else {
-		query = `UPDATE event_queue SET name=$1, properties=$2, error=$3, attempts=$4, last_attempt=NOW() WHERE id=$5 RETURNING created_at;`
+		query = `UPDATE event_queue SET name=$1, properties=$2, error=$3, attempts=$4, last_attempt=NOW() WHERE id=$5 RETURNING id;`
 		_, err = conn.Exec(ctx, query, t.Name, propertiesJSON, t.Error, t.Attempts, t.ID)
 	}
 
