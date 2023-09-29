@@ -3,7 +3,6 @@ package postq
 import (
 	"fmt"
 	"log"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -32,10 +31,8 @@ func (t *SyncEventConsumer) Handle(ctx Context) (int, error) {
 	event, err := t.consumeOne(ctx, tx)
 	if err != nil {
 		if event != nil {
-			now := time.Now()
 			event.Attempts++
 			event.Error = err.Error()
-			event.LastAttempt = &now
 			if err := event.Save(ctx, tx.Conn()); err != nil {
 				return 0, fmt.Errorf("error saving updates of a failed event: %w", err)
 			}
@@ -99,12 +96,9 @@ func (t *AsyncEventConsumer) Handle(ctx Context) (int, error) {
 
 	failedEvents := t.Consumer(ctx, events)
 
-	// TODO: use db NOW()
-	now := time.Now()
 	for i := range failedEvents {
 		e := failedEvents[i]
 		e.Attempts += 1
-		e.LastAttempt = &now
 	}
 
 	if err := failedEvents.Update(ctx, tx.Conn()); err != nil {

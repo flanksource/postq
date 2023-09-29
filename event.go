@@ -54,11 +54,11 @@ func (t *Event) Save(ctx Context, conn *pgx.Conn) error {
 
 	var query string
 	if t.ID == uuid.Nil {
-		query = `INSERT INTO event_queue (name, properties, error, attempts, last_attempt) VALUES ($1, $2, $3, $4, $5) RETURNING id;`
-		err = conn.QueryRow(ctx, query, t.Name, propertiesJSON, t.Error, t.Attempts, t.LastAttempt).Scan(&t.ID)
+		query = `INSERT INTO event_queue (name, properties, error, attempts, last_attempt) VALUES ($1, $2, $3, $4, NOW()) RETURNING id;`
+		err = conn.QueryRow(ctx, query, t.Name, propertiesJSON, t.Error, t.Attempts).Scan(&t.ID)
 	} else {
-		query = `UPDATE event_queue SET name=$1, properties=$2, error=$3, attempts=$4, last_attempt=$5 WHERE id=$6 RETURNING created_at;`
-		_, err = conn.Exec(ctx, query, t.Name, propertiesJSON, t.Error, t.Attempts, t.LastAttempt, t.ID)
+		query = `UPDATE event_queue SET name=$1, properties=$2, error=$3, attempts=$4, last_attempt=NOW() WHERE id=$5 RETURNING created_at;`
+		_, err = conn.Exec(ctx, query, t.Name, propertiesJSON, t.Error, t.Attempts, t.ID)
 	}
 
 	return err
@@ -79,8 +79,8 @@ func (events Events) Update(ctx Context, tx *pgx.Conn) error {
 			return err
 		}
 
-		query := `UPDATE event_queue SET name=$1, properties=$2, error=$3, attempts=$4, last_attempt=$5 WHERE id=$6 RETURNING created_at;`
-		batch.Queue(query, event.Name, propertiesJSON, event.Error, event.Attempts, event.LastAttempt, event.ID)
+		query := `UPDATE event_queue SET name=$1, properties=$2, error=$3, attempts=$4, last_attempt=NOW() WHERE id=$5 RETURNING created_at;`
+		batch.Queue(query, event.Name, propertiesJSON, event.Error, event.Attempts, event.ID)
 	}
 
 	br := tx.SendBatch(ctx, &batch)
