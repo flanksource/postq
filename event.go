@@ -30,6 +30,8 @@ func (t *Event) Scan(rows pgx.Row) error {
 	err := rows.Scan(
 		&t.ID,
 		&t.Name,
+		&t.CreatedAt,
+		&t.Properties,
 		&t.Error,
 		&t.LastAttempt,
 		&t.Attempts,
@@ -98,7 +100,7 @@ func fetchEvents(ctx Context, tx pgx.Tx, watchEvents []string, batchSize int, op
 			FOR UPDATE SKIP LOCKED
 			LIMIT @batchSize
 		)
-		RETURNING id, name, error, last_attempt, attempts
+		RETURNING id, name, created_at, properties, error, last_attempt, attempts
 	`
 
 	args := pgx.NamedArgs{
