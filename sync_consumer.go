@@ -78,3 +78,17 @@ func (t *SyncEventConsumer) consumeEvent(ctx Context) (*Event, error) {
 
 	return &event, tx.Commit(ctx)
 }
+
+// SyncHandlers converts the given user defined handlers into sync event handlers.
+func SyncHandlers[T Context](fn ...func(ctx T, e Event) error) []SyncEventHandlerFunc {
+	var syncHandlers []SyncEventHandlerFunc
+
+	for _, f := range fn {
+		syncHandler := func(ctx Context, e Event) error {
+			return f(ctx.(T), e)
+		}
+		syncHandlers = append(syncHandlers, syncHandler)
+	}
+
+	return syncHandlers
+}

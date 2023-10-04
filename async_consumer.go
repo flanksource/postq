@@ -55,3 +55,10 @@ func (t *AsyncEventConsumer) Handle(ctx Context) (int, error) {
 func (t AsyncEventConsumer) EventConsumer() (*PGConsumer, error) {
 	return NewPGConsumer(t.Handle, t.ConsumerOption)
 }
+
+// AsyncHandler converts the given user defined handler into a async event handler.
+func AsyncHandler[T Context](fn func(ctx T, e Events) Events) AsyncEventHandlerFunc {
+	return func(ctx Context, e Events) Events {
+		return fn(ctx.(T), e)
+	}
+}
