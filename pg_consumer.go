@@ -20,7 +20,7 @@ type PGConsumer struct {
 	consumerFunc ConsumerFunc
 
 	// handle errors when consuming.
-	errorHandler func(e error) bool
+	errorHandler func(ctx Context, e error) bool
 }
 
 type ConsumerOption struct {
@@ -34,8 +34,8 @@ type ConsumerOption struct {
 
 	// handle errors when consuming.
 	// returns whether to retry or not.
-	// 	default: sleep for 5 seconds and retry.
-	ErrorHandler func(err error) bool
+	// 	default: sleep for 1s and retry.
+	ErrorHandler func(ctx Context, e error) bool
 }
 
 // NewPGConsumer returns a new EventConsumer
@@ -63,6 +63,7 @@ func NewPGConsumer(consumerFunc ConsumerFunc, opt *ConsumerOption) (*PGConsumer,
 		if opt.ErrorHandler != nil {
 			ec.errorHandler = opt.ErrorHandler
 		}
+
 	}
 
 	return ec, nil
@@ -73,7 +74,7 @@ func (t *PGConsumer) ConsumeUntilEmpty(ctx Context) {
 	for {
 		count, err := t.consumerFunc(ctx)
 		if err != nil {
-			if !t.errorHandler(err) {
+			if !t.errorHandler(ctx, err) {
 				return
 			}
 		} else if count == 0 {
@@ -99,7 +100,8 @@ func (e *PGConsumer) Listen(ctx Context, pgNotify <-chan string) {
 	}
 }
 
-func defaultErrorHandler(_ error) bool {
-	time.Sleep(time.Second * 5)
+func defaultErrorHandler(ctx Context, e error) bool {
+	time.Sleep(time.Second)
+	ctx.Debugf("default error: %v", e)
 	return true
 }
