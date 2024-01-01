@@ -9,4 +9,6 @@ import (
 type Context interface {
 	context.Context
 	Pool() *pgxpool.Pool
+	Debugf(message string, args ...interface{})
+	Tracef(message string, args ...interface{})
 }

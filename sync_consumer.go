@@ -2,7 +2,6 @@ package postq
 
 import (
 	"fmt"
-	"log"
 )
 
 // SyncEventHandlerFunc processes a single event and ONLY makes db changes.
@@ -38,7 +37,7 @@ func (t *SyncEventConsumer) Handle(ctx Context) (int, error) {
 		event.SetError(err.Error())
 		const query = `UPDATE event_queue SET error=$1, attempts=$2, last_attempt=NOW() WHERE id=$3`
 		if _, err := ctx.Pool().Exec(ctx, query, event.Error, event.Attempts, event.ID); err != nil {
-			log.Printf("error saving event attempt updates to event_queue: %v\n", err)
+			ctx.Debugf("error saving event attempt updates to event_queue: %v\n", err)
 		}
 	}
 

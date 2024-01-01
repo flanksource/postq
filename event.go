@@ -2,6 +2,7 @@ package postq
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -11,14 +12,17 @@ import (
 // Event represents the event queue table.
 // The table must have the following fields.
 type Event struct {
-	ID          uuid.UUID  `json:"id"`
-	Name        string     `json:"name"`
-	Error       *string    `json:"error"`
-	Attempts    int        `json:"attempts"`
-	LastAttempt *time.Time `json:"last_attempt"`
+	ID          uuid.UUID         `json:"id"`
+	Name        string            `json:"name"`
+	Error       *string           `json:"error"`
+	Attempts    int               `json:"attempts"`
+	LastAttempt *time.Time        `json:"last_attempt"`
+	Properties  map[string]string `json:"properties"`
+	CreatedAt   time.Time         `json:"created_at"`
+}
 
-	Properties map[string]string `json:"properties"`
-	CreatedAt  time.Time         `json:"created_at"`
+func (t Event) TableName() string {
+	return "event_queue"
 }
 
 func (t *Event) SetError(err string) {
@@ -88,11 +92,14 @@ type EventFetcherOption struct {
 
 // fetchEvents fetches given watch events from the `event_queue` table.
 func fetchEvents(ctx Context, tx pgx.Tx, watchEvents []string, batchSize int, opts *EventFetcherOption) ([]Event, error) {
+	if batchSize == 0 {
+		batchSize = 1
+	}
 	const selectEventsQuery = `
 		DELETE FROM event_queue
 		WHERE id IN (
 			SELECT id FROM event_queue
-			WHERE 
+			WHERE
 				attempts <= @maxAttempts AND
 				name = ANY(@events) AND
 				(last_attempt IS NULL OR last_attempt <= NOW() - INTERVAL '1 SECOND' * @baseDelay * POWER(attempts, @exponent))
@@ -145,5 +152,8 @@ func fetchEvents(ctx Context, tx pgx.Tx, watchEvents []string, batchSize int, op
 		return nil, fmt.Errorf("error iterating rows: %w", rows.Err())
 	}
 
+	if len(events) > 0 {
+		ctx.Tracef("%s %d events fetched", strings.Join(watchEvents, ","), len(events))
+	}
 	return events, nil
 }
