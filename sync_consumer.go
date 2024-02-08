@@ -82,7 +82,8 @@ func (t *SyncEventConsumer) consumeEvent(ctx Context) (*Event, error) {
 func SyncHandlers[T Context](fn ...func(ctx T, e Event) error) []SyncEventHandlerFunc {
 	var syncHandlers []SyncEventHandlerFunc
 
-	for _, f := range fn {
+	for i := range fn {
+		f := fn[i]
 		syncHandler := func(ctx Context, e Event) error {
 			return f(ctx.(T), e)
 		}
