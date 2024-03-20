@@ -19,6 +19,7 @@ type Event struct {
 	LastAttempt *time.Time        `json:"last_attempt"`
 	Properties  map[string]string `json:"properties"`
 	CreatedAt   time.Time         `json:"created_at"`
+	Priority    int               `json:"priority"`
 }
 
 func (t Event) TableName() string {
@@ -39,6 +40,7 @@ func (t *Event) Scan(rows pgx.Row) error {
 		&t.Error,
 		&t.LastAttempt,
 		&t.Attempts,
+		&t.Priority,
 	)
 	if err != nil {
 		return err
@@ -49,16 +51,20 @@ func (t *Event) Scan(rows pgx.Row) error {
 
 type Events []Event
 
-// Update updates the events in batches.
-func (events Events) Update(ctx Context, tx *pgx.Conn) error {
+// Recreate creates the given failed events in batches after updating the
+// attempts count.
+func (events Events) Recreate(ctx Context, tx *pgx.Conn) error {
 	if len(events) == 0 {
 		return nil
 	}
 
 	var batch pgx.Batch
 	for _, event := range events {
-		query := `UPDATE event_queue SET error=$1, attempts=$2, last_attempt=NOW() WHERE id=$3`
-		batch.Queue(query, event.Error, event.Attempts, event.ID)
+		attempts := event.Attempts + 1
+		query := `INSERT INTO event_queue 
+		(name, properties, error, last_attempt, attempts, priority) 
+		VALUES($1, $2, $3, NOW(), $4, $5)`
+		batch.Queue(query, event.Name, event.Properties, event.Error, attempts, event.Priority)
 	}
 
 	br := tx.SendBatch(ctx, &batch)
@@ -107,7 +113,7 @@ func fetchEvents(ctx Context, tx pgx.Tx, watchEvents []string, batchSize int, op
 			FOR UPDATE SKIP LOCKED
 			LIMIT @batchSize
 		)
-		RETURNING id, name, created_at, properties, error, last_attempt, attempts
+		RETURNING id, name, created_at, properties, error, last_attempt, attempts, priority
 	`
 
 	args := pgx.NamedArgs{

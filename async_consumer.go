@@ -37,13 +37,7 @@ func (t *AsyncEventConsumer) Handle(ctx Context) (int, error) {
 	}
 
 	failedEvents := t.Consumer(ctx, events)
-
-	for i := range failedEvents {
-		e := failedEvents[i]
-		e.Attempts += 1
-	}
-
-	if err := failedEvents.Update(ctx, tx.Conn()); err != nil {
+	if err := failedEvents.Recreate(ctx, tx.Conn()); err != nil {
 		ctx.Debugf("error saving event attempt updates to event_queue: %v\n", err)
 	}
 
