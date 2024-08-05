@@ -1,6 +1,7 @@
 package postq
 
 import (
+	"container/ring"
 	"fmt"
 )
 
@@ -8,6 +9,8 @@ import (
 type AsyncEventHandlerFunc func(Context, Events) Events
 
 type AsyncEventConsumer struct {
+	eventLog *ring.Ring
+
 	// Name of the events in the push queue to watch for.
 	WatchEvents []string
 
@@ -24,6 +27,19 @@ type AsyncEventConsumer struct {
 	EventFetcherOption *EventFetcherOption
 }
 
+// RecordEvents will record all the events fetched by the consumer in a ring buffer.
+func (t *AsyncEventConsumer) RecordEvents(size int) {
+	t.eventLog = ring.New(size)
+}
+
+func (t AsyncEventConsumer) GetRecords() ([]Event, error) {
+	if t.eventLog == nil {
+		return nil, fmt.Errorf("event log is not initialized")
+	}
+
+	return getRecords(t.eventLog), nil
+}
+
 func (t *AsyncEventConsumer) Handle(ctx Context) (int, error) {
 	tx, err := ctx.Pool().Begin(ctx)
 	if err != nil {
@@ -34,6 +50,13 @@ func (t *AsyncEventConsumer) Handle(ctx Context) (int, error) {
 	events, err := fetchEvents(ctx, tx, t.WatchEvents, t.BatchSize, t.EventFetcherOption)
 	if err != nil {
 		return 0, fmt.Errorf("error fetching events: %w", err)
+	}
+
+	if t.eventLog != nil {
+		for _, event := range events {
+			t.eventLog.Value = event
+			t.eventLog = t.eventLog.Next()
+		}
 	}
 
 	failedEvents := t.Consumer(ctx, events)
