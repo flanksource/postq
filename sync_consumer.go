@@ -1,6 +1,7 @@
 package postq
 
 import (
+	"container/ring"
 	"fmt"
 )
 
@@ -8,6 +9,8 @@ import (
 type SyncEventHandlerFunc func(Context, Event) error
 
 type SyncEventConsumer struct {
+	eventLog *ring.Ring
+
 	// Name of the events in the push queue to watch for.
 	WatchEvents []string
 
@@ -20,6 +23,19 @@ type SyncEventConsumer struct {
 
 	// EventFetcherOption contains configuration on how the events should be fetched.
 	EventFetchOption *EventFetcherOption
+}
+
+// RecordEvents will record all the events fetched by the consumer in a ring buffer.
+func (t *SyncEventConsumer) RecordEvents(size int) {
+	t.eventLog = ring.New(size)
+}
+
+func (t SyncEventConsumer) GetRecords() ([]Event, error) {
+	if t.eventLog == nil {
+		return nil, fmt.Errorf("event log is not initialized")
+	}
+
+	return getRecords(t.eventLog), nil
 }
 
 func (t SyncEventConsumer) EventConsumer() (*PGConsumer, error) {
@@ -68,6 +84,10 @@ func (t *SyncEventConsumer) consumeEvent(ctx Context) (*Event, error) {
 
 	// sync consumers always fetch a single event at a time
 	event := events[0]
+	if t.eventLog != nil {
+		t.eventLog.Value = event
+		t.eventLog = t.eventLog.Next()
+	}
 
 	for _, syncConsumer := range t.Consumers {
 		if err := syncConsumer(ctx, event); err != nil {
