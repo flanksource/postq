@@ -68,18 +68,14 @@ func (events Events) Recreate(ctx Context, tx *pgx.Conn) error {
 	}
 
 	br := tx.SendBatch(ctx, &batch)
-	defer br.Close()
-
-	for {
-		rows, err := br.Query()
-		rows.Close()
-
-		if err != nil {
-			break
+	for range events {
+		if _, err := br.Exec(); err != nil {
+			_ = br.Close()
+			return err
 		}
 	}
 
-	return nil
+	return br.Close()
 }
 
 type EventFetcherOption struct {
